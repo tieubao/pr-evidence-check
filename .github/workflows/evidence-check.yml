@@ -166,9 +166,15 @@ jobs:
             # shellcheck disable=SC2016  # $id is a GraphQL variable, not a shell var
             query='mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }'
             payload=$(jq -n --arg q "$query" --arg id "$PR_NODE_ID" '{query: $q, variables: {id: $id}}')
-            curl -sSf -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Content-Type: application/json" \
-              https://api.github.com/graphql -d "$payload" >/dev/null
-            body="${body}"$'\n\n'"Moved to draft because a check failed. Mark it ready for review again after fixing the body above."
+            draft_response=$(curl -sSf -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Content-Type: application/json" \
+              https://api.github.com/graphql -d "$payload")
+            echo "convertPullRequestToDraft response: ${draft_response}"
+            if [ "$(jq -r '.data.convertPullRequestToDraft.pullRequest.isDraft // false' <<< "$draft_response")" = "true" ]; then
+              body="${body}"$'\n\n'"Moved to draft because a check failed. Mark it ready for review again after fixing the body above."
+            else
+              err_msg=$(jq -r '.errors[0].message // "conversion did not report isDraft=true"' <<< "$draft_response")
+              body="${body}"$'\n\n'"Draft conversion failed: ${err_msg}"
+            fi
           fi
 
           api="https://api.github.com/repos/${REPO}/issues/${PR}/comments"

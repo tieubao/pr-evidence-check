@@ -28,10 +28,33 @@ check_result() {
   fi
 }
 
-# (a) raw template body, UI touched: fails UNEDITED, VERIFIED, EVIDENCE
-check_result "a: raw template + UI touched -> UNEDITED fails" \
+# check_result_tpl: like check_result but with an explicit template path,
+# for fixtures that use a different template than $FX/template.md.
+check_result_tpl() {
+  local name="$1" template="$2" body="$3" changed="$4" expect="$5"
+  local json
+  json=$(bash "$CHECK" \
+    --body "$body" --template "$template" \
+    --changed-files "$changed" \
+    --ui-paths "$FX/ui-paths.txt" --preview-hosts "$FX/preview-hosts.txt")
+  if jq -e "$expect" <<< "$json" > /dev/null 2>&1; then
+    echo "PASS: $name"
+  else
+    echo "FAIL: $name"
+    echo "  expect: $expect"
+    echo "  got:    $json"
+    fail_count=$((fail_count + 1))
+  fi
+}
+
+# (a) raw template body, UI touched: fails VERIFIED, EVIDENCE.
+# UNEDITED now passes: template.md's placeholders are pure single-line HTML
+# comments, so once comments are stripped there is no visible placeholder
+# text left to compare -- see fixture (f) for a template with a mix of
+# comments and visible leftover lines, where UNEDITED does still fail.
+check_result "a: raw template + UI touched -> UNEDITED passes (comment-only template, nothing visible to compare)" \
   "$FX/raw-template-body.md" "$FX/changed-files-ui.txt" \
-  '(.checks[] | select(.name == "UNEDITED") | .pass) == false'
+  '(.checks[] | select(.name == "UNEDITED") | .pass) == true'
 check_result "a: raw template + UI touched -> VERIFIED fails" \
   "$FX/raw-template-body.md" "$FX/changed-files-ui.txt" \
   '(.checks[] | select(.name == "VERIFIED") | .pass) == false'
@@ -67,6 +90,36 @@ check_result "d: filled + no evidence + UI touched -> EVIDENCE fails" \
   '(.checks[] | select(.name == "EVIDENCE") | .pass) == false'
 check_result "d: filled + no evidence + UI touched -> overall fails" \
   "$FX/filled-no-evidence.md" "$FX/changed-files-ui.txt" \
+  '.overall_pass == false'
+
+# (e) real foundation-apps template, filled with real content but the
+# author left every HTML comment in place (GitHub barely renders them, so
+# people rarely notice and delete them): must PASS UNEDITED and VERIFIED.
+check_result_tpl "e: real template, filled body keeps HTML comments -> UNEDITED passes" \
+  "$FX/template-real.md" "$FX/filled-keeps-comments.md" "$FX/changed-files-no-ui.txt" \
+  '(.checks[] | select(.name == "UNEDITED") | .pass) == true'
+check_result_tpl "e: real template, filled body keeps HTML comments -> VERIFIED passes" \
+  "$FX/template-real.md" "$FX/filled-keeps-comments.md" "$FX/changed-files-no-ui.txt" \
+  '(.checks[] | select(.name == "VERIFIED") | .pass) == true'
+check_result_tpl "e: real template, filled body keeps HTML comments -> overall passes" \
+  "$FX/template-real.md" "$FX/filled-keeps-comments.md" "$FX/changed-files-no-ui.txt" \
+  '.overall_pass == true'
+
+# (f) real foundation-apps template used verbatim as the body (raw,
+# unedited), UI touched. Unlike (a), this template has visible non-comment
+# lines outside the comments (the checklist items), so UNEDITED does fail
+# here; VERIFIED and EVIDENCE fail regardless of that.
+check_result_tpl "f: raw real template + UI touched -> UNEDITED fails" \
+  "$FX/template-real.md" "$FX/raw-template-real-body.md" "$FX/changed-files-ui.txt" \
+  '(.checks[] | select(.name == "UNEDITED") | .pass) == false'
+check_result_tpl "f: raw real template + UI touched -> VERIFIED fails" \
+  "$FX/template-real.md" "$FX/raw-template-real-body.md" "$FX/changed-files-ui.txt" \
+  '(.checks[] | select(.name == "VERIFIED") | .pass) == false'
+check_result_tpl "f: raw real template + UI touched -> EVIDENCE fails" \
+  "$FX/template-real.md" "$FX/raw-template-real-body.md" "$FX/changed-files-ui.txt" \
+  '(.checks[] | select(.name == "EVIDENCE") | .pass) == false'
+check_result_tpl "f: raw real template + UI touched -> overall fails" \
+  "$FX/template-real.md" "$FX/raw-template-real-body.md" "$FX/changed-files-ui.txt" \
   '.overall_pass == false'
 
 # --- negative control ---
