@@ -42,6 +42,8 @@ jobs:
       ui_paths: |
         apps/memo/**
         apps/home/**
+    secrets:
+      draft_token: ${{ secrets.PR_EVIDENCE_DRAFT_TOKEN }}
     permissions:
       contents: read
       pull-requests: write
@@ -51,6 +53,38 @@ The `if:` guard on the caller job matters: it keeps this workflow off fork
 PRs, where the job token cannot comment or convert drafts anyway. Every
 event type in `types:` matters too, especially `edited`, an author fixing
 only the PR body (no new commit) still needs the check to re-run.
+
+## Draft conversion needs a user PAT
+
+`GITHUB_TOKEN` (the default Actions token, and a GitHub App install token
+the same way) cannot convert a PR to draft. The `convertPullRequestToDraft`
+GraphQL mutation returns:
+
+```json
+{"errors":[{"type":"FORBIDDEN","message":"Resource not accessible by integration"}]}
+```
+
+GitHub does not allow a job token or App token to draft-convert a PR;
+only a user token works. To get real draft conversion, create a
+fine-grained personal access token and pass it through as the
+`draft_token` secret:
+
+1. GitHub -> Settings -> Developer settings -> Fine-grained tokens -> new
+   token.
+2. Repository access: only the repos that call this workflow (never "all
+   repos").
+3. Permissions: **Pull requests: Read and write**. Nothing else, this
+   token does no other API call in this workflow.
+4. Store it as a repo or org secret (e.g. `PR_EVIDENCE_DRAFT_TOKEN`) and
+   pass it via `secrets: { draft_token: ... }` in the caller, as shown
+   above.
+
+Without this secret, the workflow still runs and still fails the check on
+a bad PR body: it just cannot flip the PR to draft. The comment says
+"Draft conversion unavailable: no draft_token secret configured" and the
+check stays red, advisory-only, a reviewer has to notice and not merge.
+With the secret, a failing check also moves the PR to draft so there is no
+merge button at all.
 
 ## Inputs
 
