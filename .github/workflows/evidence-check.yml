@@ -38,6 +38,16 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+      # A reusable workflow checks out the CALLER's repo above, which is what
+      # the template and the diff need. The checking script lives in this
+      # repo, so it is fetched separately into a subfolder (public repo, no
+      # token needed).
+      - uses: actions/checkout@v4
+        with:
+          repository: tieubao/pr-evidence-check
+          ref: main
+          path: .evidence-check
+          persist-credentials: false
 
       # Bypass label check happens before anything else touches the API.
       # Later steps are gated on this one's `bypassed` output, so a
@@ -115,7 +125,7 @@ jobs:
         id: check
         run: |
           set -euo pipefail
-          json=$(bash scripts/check-body.sh \
+          json=$(bash .evidence-check/scripts/check-body.sh \
             --body body.txt --template template.txt \
             --changed-files changed-files.txt \
             --ui-paths ui-paths.txt --preview-hosts preview-hosts.txt)
