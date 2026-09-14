@@ -35,6 +35,39 @@ PREVIEW_HOSTS="$(read_or_empty "$preview_hosts_file")"
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
 
+# --- strip HTML comments ------------------------------------------------
+# GitHub's PR-body editor renders <!-- ... --> template guidance as
+# barely-visible text that authors routinely leave in place (they never
+# typed it, so they never think to delete it), and a comment can span
+# many lines. An awk state machine strips every <!-- ... --> block,
+# multi-line aware, before either UNEDITED or VERIFIED looks at the text,
+# so leftover guidance never counts as either real content or a leftover
+# placeholder line.
+strip_html_comments() {
+  awk '
+    BEGIN { incomment = 0 }
+    {
+      line = $0
+      out = ""
+      while (length(line) > 0) {
+        if (incomment) {
+          e = index(line, "-->")
+          if (e == 0) { line = "" }
+          else { line = substr(line, e + 3); incomment = 0 }
+        } else {
+          s = index(line, "<!--")
+          if (s == 0) { out = out line; line = "" }
+          else { out = out substr(line, 1, s - 1); line = substr(line, s + 4); incomment = 1 }
+        }
+      }
+      print out
+    }
+  ' <<< "$1"
+}
+
+BODY="$(strip_html_comments "$BODY")"
+TEMPLATE="$(strip_html_comments "$TEMPLATE")"
+
 # --- ui_touched -------------------------------------------------------
 # Glob matching via bash's `[[ str == pattern ]]`. This is pattern
 # matching, not filesystem globbing, so "**" is not special: fnmatch
@@ -68,7 +101,7 @@ if [ -n "$TEMPLATE" ]; then
     t="$(trim "$tline")"
     [ -z "$t" ] && continue
     case "$t" in \#*) continue ;; esac
-    if grep -qxF "$t" <<< "$norm_body_lines"; then
+    if grep -qxF -- "$t" <<< "$norm_body_lines"; then
       unedited_offenders+=("$t")
     fi
   done <<< "$TEMPLATE"
@@ -107,7 +140,7 @@ else
   while IFS= read -r vline; do
     v="$(trim "$vline")"
     [ -z "$v" ] && continue
-    if ! grep -qxF "$v" <<< "$norm_template_verified_lines"; then
+    if ! grep -qxF -- "$v" <<< "$norm_template_verified_lines"; then
       has_content=true
     fi
   done <<< "$verified_section"
@@ -141,7 +174,7 @@ grep -qiE 'youtu' <<< "$BODY" && evidence_found=true
 if [ -n "$PREVIEW_HOSTS" ]; then
   while IFS= read -r host; do
     [ -z "$host" ] && continue
-    grep -qiF "$host" <<< "$BODY" && evidence_found=true
+    grep -qiF -- "$host" <<< "$BODY" && evidence_found=true
   done <<< "$PREVIEW_HOSTS"
 fi
 # the `&&` chains above are fine under `set -e`: a bare command in an
