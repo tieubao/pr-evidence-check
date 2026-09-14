@@ -24,6 +24,15 @@ on:
       convert_to_draft:
         type: boolean
         default: true
+    secrets:
+      draft_token:
+        description: >-
+          A fine-grained user PAT with pull requests: write on this repo,
+          used only for the draft conversion. GITHUB_TOKEN cannot do this
+          (GraphQL returns a FORBIDDEN "Resource not accessible by
+          integration" error). When absent, the check still goes red and
+          the comment says draft conversion is unavailable.
+        required: false
 
 jobs:
   evidence:
@@ -135,6 +144,7 @@ jobs:
         if: steps.bypass.outputs.bypassed != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRAFT_TOKEN: ${{ secrets.draft_token }}
           PR: ${{ github.event.pull_request.number }}
           PR_NODE_ID: ${{ github.event.pull_request.node_id }}
           REPO: ${{ github.repository }}
@@ -163,17 +173,26 @@ jobs:
           body="### PR evidence check"$'\n\n'"| Check | Result | Reason |"$'\n'"|---|---|---|"$'\n'"${rows}"$'\n\n'"**How to fix:**"$'\n'"${fixes}"$'\n\n'"Bypass: add the \`${BYPASS_LABEL}\` label to skip this check."
 
           if [ "$overall_pass" != "true" ] && [ "$CONVERT_TO_DRAFT" = "true" ] && [ "$IS_DRAFT" != "true" ]; then
-            # shellcheck disable=SC2016  # $id is a GraphQL variable, not a shell var
-            query='mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }'
-            payload=$(jq -n --arg q "$query" --arg id "$PR_NODE_ID" '{query: $q, variables: {id: $id}}')
-            draft_response=$(curl -sSf -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Content-Type: application/json" \
-              https://api.github.com/graphql -d "$payload")
-            echo "convertPullRequestToDraft response: ${draft_response}"
-            if [ "$(jq -r '.data.convertPullRequestToDraft.pullRequest.isDraft // false' <<< "$draft_response")" = "true" ]; then
-              body="${body}"$'\n\n'"Moved to draft because a check failed. Mark it ready for review again after fixing the body above."
+            if [ -z "$DRAFT_TOKEN" ]; then
+              # GITHUB_TOKEN (a job token, whether the default Actions token
+              # or a GitHub App install token) cannot run this mutation:
+              # GraphQL returns {"errors":[{"type":"FORBIDDEN","message":
+              # "Resource not accessible by integration"}]}. Only a user PAT
+              # can convert a PR to draft. Without one, stay advisory-red.
+              body="${body}"$'\n\n'"Draft conversion unavailable: no draft_token secret configured. The check is red; a reviewer must not merge until the body is fixed."
             else
-              err_msg=$(jq -r '.errors[0].message // "conversion did not report isDraft=true"' <<< "$draft_response")
-              body="${body}"$'\n\n'"Draft conversion failed: ${err_msg}"
+              # shellcheck disable=SC2016  # $id is a GraphQL variable, not a shell var
+              query='mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }'
+              payload=$(jq -n --arg q "$query" --arg id "$PR_NODE_ID" '{query: $q, variables: {id: $id}}')
+              draft_response=$(curl -sSf -X POST -H "Authorization: Bearer ${DRAFT_TOKEN}" -H "Content-Type: application/json" \
+                https://api.github.com/graphql -d "$payload")
+              echo "convertPullRequestToDraft response: ${draft_response}"
+              if [ "$(jq -r '.data.convertPullRequestToDraft.pullRequest.isDraft // false' <<< "$draft_response")" = "true" ]; then
+                body="${body}"$'\n\n'"Moved to draft because a check failed. Mark it ready for review again after fixing the body above."
+              else
+                err_msg=$(jq -r '.errors[0].message // "conversion did not report isDraft=true"' <<< "$draft_response")
+                body="${body}"$'\n\n'"Draft conversion failed: ${err_msg}"
+              fi
             fi
           fi
 
