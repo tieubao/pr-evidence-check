@@ -1,0 +1,173 @@
+name: Evidence check (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      runs_on:
+        description: JSON array of runner labels, e.g. '["self-hosted","pr-shared"]'
+        type: string
+        required: true
+      ui_paths:
+        description: Newline-separated globs, e.g. "src/**\npublic/**"
+        type: string
+        required: true
+      template_path:
+        type: string
+        default: ".github/PULL_REQUEST_TEMPLATE.md"
+      bypass_label:
+        type: string
+        default: "skip-evidence-check"
+      preview_hosts:
+        description: Newline-separated substrings that count as a preview link
+        type: string
+        default: "pages.dev\nworkers.dev"
+      convert_to_draft:
+        type: boolean
+        default: true
+
+jobs:
+  evidence:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Bypass label check happens before anything else touches the API.
+      # Later steps are gated on this one's `bypassed` output, so a
+      # bypassed run does none of the diff/check/comment work below and
+      # the job exits 0 with no failing step.
+      - name: Check bypass label
+        id: bypass
+        env:
+          LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          BYPASS_LABEL: ${{ inputs.bypass_label }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          bypassed=$(jq -r --arg l "$BYPASS_LABEL" 'any(.[]; . == $l)' <<< "$LABELS_JSON")
+          echo "bypassed=$bypassed" >> "$GITHUB_OUTPUT"
+          echo "by=$ACTOR" >> "$GITHUB_OUTPUT"
+
+      - name: Post bypass comment
+        if: steps.bypass.outputs.bypassed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          BYPASS_LABEL: ${{ inputs.bypass_label }}
+          BY: ${{ steps.bypass.outputs.by }}
+        run: |
+          set -euo pipefail
+          body="### PR evidence check"$'\n\n'"This check was bypassed by the \`${BYPASS_LABEL}\` label, added by @${BY}."
+          api="https://api.github.com/repos/${REPO}/issues/${PR}/comments"
+          cid=$(curl -sSf -H "Authorization: Bearer ${GH_TOKEN}" "$api?per_page=100" \
+            | jq -r '([.[] | select(.body | startswith("### PR evidence check"))] | last | .id) // empty')
+          payload=$(jq -n --arg body "$body" '{body: $body}')
+          if [ -n "$cid" ]; then
+            curl -sSf -X PATCH -H "Authorization: Bearer ${GH_TOKEN}" \
+              "https://api.github.com/repos/${REPO}/issues/comments/${cid}" -d "$payload" >/dev/null
+          else
+            curl -sSf -X POST -H "Authorization: Bearer ${GH_TOKEN}" "$api" -d "$payload" >/dev/null
+          fi
+
+      # --- everything below only runs when the bypass label is absent ---
+
+      - name: Gather inputs
+        if: steps.bypass.outputs.bypassed != 'true'
+        id: gather
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          UI_PATHS: ${{ inputs.ui_paths }}
+          PREVIEW_HOSTS: ${{ inputs.preview_hosts }}
+          TEMPLATE_PATH: ${{ inputs.template_path }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # PR_BODY is attacker-controlled (anyone can edit a PR description);
+          # it is never interpolated into this script, only read back out of
+          # the environment, so it cannot break out of the shell.
+          printf '%s' "$PR_BODY" > body.txt
+          printf '%s' "$UI_PATHS" > ui-paths.txt
+          printf '%s' "$PREVIEW_HOSTS" > preview-hosts.txt
+          if [ -f "$TEMPLATE_PATH" ]; then
+            cp "$TEMPLATE_PATH" template.txt
+          else
+            : > template.txt
+          fi
+          # Two named commits, not a ref, because `edited` events (body-only,
+          # no new commit) still carry the same head sha as before -- diffing
+          # against the explicit base/head shas re-runs the same comparison
+          # every time rather than drifting with whatever `HEAD` resolves to.
+          git diff --name-only "${BASE_SHA}...${HEAD_SHA}" > changed-files.txt || true
+
+      - name: Run checks
+        if: steps.bypass.outputs.bypassed != 'true'
+        id: check
+        run: |
+          set -euo pipefail
+          json=$(bash scripts/check-body.sh \
+            --body body.txt --template template.txt \
+            --changed-files changed-files.txt \
+            --ui-paths ui-paths.txt --preview-hosts preview-hosts.txt)
+          echo "json=$json" >> "$GITHUB_OUTPUT"
+
+      - name: Comment, draft-convert, and set result
+        if: steps.bypass.outputs.bypassed != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
+          REPO: ${{ github.repository }}
+          IS_DRAFT: ${{ github.event.pull_request.draft }}
+          CONVERT_TO_DRAFT: ${{ inputs.convert_to_draft }}
+          BYPASS_LABEL: ${{ inputs.bypass_label }}
+          RESULT_JSON: ${{ steps.check.outputs.json }}
+        run: |
+          set -euo pipefail
+
+          overall_pass=$(jq -r '.overall_pass' <<< "$RESULT_JSON")
+
+          rows=$(jq -r '.checks[] |
+            "| \(.name) | \(
+              if .name == "EVIDENCE" and (.required | not) then "not required"
+              elif .pass then "pass" else "fail" end
+            ) | \(.reason) |"' <<< "$RESULT_JSON")
+
+          fixes=$(jq -r '.checks[] | select(.pass == false) |
+            if .name == "UNEDITED" then "- Replace the leftover template placeholder text noted above with real content."
+            elif .name == "VERIFIED" then "- Fill in \"## How I verified it\" with what you actually ran and what it showed: a command, a fenced code block, or output like \"tests passed\"."
+            elif .name == "EVIDENCE" then "- Add a screenshot, video, GitHub attachment, or preview link (pages.dev / workers.dev) showing the UI change."
+            else empty end' <<< "$RESULT_JSON")
+          [ -n "$fixes" ] || fixes="- (none)"
+
+          body="### PR evidence check"$'\n\n'"| Check | Result | Reason |"$'\n'"|---|---|---|"$'\n'"${rows}"$'\n\n'"**How to fix:**"$'\n'"${fixes}"$'\n\n'"Bypass: add the \`${BYPASS_LABEL}\` label to skip this check."
+
+          if [ "$overall_pass" != "true" ] && [ "$CONVERT_TO_DRAFT" = "true" ] && [ "$IS_DRAFT" != "true" ]; then
+            # shellcheck disable=SC2016  # $id is a GraphQL variable, not a shell var
+            query='mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { isDraft } } }'
+            payload=$(jq -n --arg q "$query" --arg id "$PR_NODE_ID" '{query: $q, variables: {id: $id}}')
+            curl -sSf -X POST -H "Authorization: Bearer ${GH_TOKEN}" -H "Content-Type: application/json" \
+              https://api.github.com/graphql -d "$payload" >/dev/null
+            body="${body}"$'\n\n'"Moved to draft because a check failed. Mark it ready for review again after fixing the body above."
+          fi
+
+          api="https://api.github.com/repos/${REPO}/issues/${PR}/comments"
+          cid=$(curl -sSf -H "Authorization: Bearer ${GH_TOKEN}" "$api?per_page=100" \
+            | jq -r '([.[] | select(.body | startswith("### PR evidence check"))] | last | .id) // empty')
+          payload=$(jq -n --arg body "$body" '{body: $body}')
+          if [ -n "$cid" ]; then
+            curl -sSf -X PATCH -H "Authorization: Bearer ${GH_TOKEN}" \
+              "https://api.github.com/repos/${REPO}/issues/comments/${cid}" -d "$payload" >/dev/null
+          else
+            curl -sSf -X POST -H "Authorization: Bearer ${GH_TOKEN}" "$api" -d "$payload" >/dev/null
+          fi
+
+          [ "$overall_pass" = "true" ]

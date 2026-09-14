@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    # This repo is PUBLIC: hosted runners are fine here. Every private repo
+    # in the estate runs on the self-hosted pr-shared pool instead (zero
+    # Actions spend); this repo is the one exception by design.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: actionlint
+        uses: raven-actions/actionlint@v2
+        with:
+          fail-on-error: true
+
+      - name: Run tests
+        run: bash tests/run.sh
