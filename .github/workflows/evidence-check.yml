@@ -106,7 +106,9 @@ jobs:
           # no new commit) still carry the same head sha as before -- diffing
           # against the explicit base/head shas re-runs the same comparison
           # every time rather than drifting with whatever `HEAD` resolves to.
-          git diff --name-only "${BASE_SHA}...${HEAD_SHA}" > changed-files.txt || true
+          # A diff error must fail the job, not read as "no UI files changed":
+          # an empty list would silently waive the EVIDENCE requirement.
+          git diff --name-only "${BASE_SHA}...${HEAD_SHA}" > changed-files.txt
 
       - name: Run checks
         if: steps.bypass.outputs.bypassed != 'true'
