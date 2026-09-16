@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Replaces .github/workflows/evidence-check.yml for installations that do not
+  // want a GitHub runner. The workflow stays in this repo for anyone still on
+  // Actions; both call the same rules (scripts/check-body.sh and its TypeScript
+  // port in worker/src/check.ts).
+  "name": "pr-evidence",
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "observability": { "enabled": true, "head_sampling_rate": 1 }
+  // No account id: this repo is public. `wrangler deploy` reads it from
+  // CLOUDFLARE_ACCOUNT_ID.
+  // No vars: per-installation config is the REPOS wrangler secret, because a
+  // deploy replaces the whole vars block and this repo must not carry any
+  // installation's repo names or path globs. GITHUB_WEBHOOK_SECRET and
+  // GITHUB_TOKEN are secrets too. See worker/README.md.
+}

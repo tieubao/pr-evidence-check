@@ -1,0 +1,14 @@
+{
+  "trigger_name": "Deploy production",
+  "branch_includes": [
+    "main"
+  ],
+  "branch_excludes": [],
+  "path_includes": [
+    "*"
+  ],
+  "path_excludes": [],
+  "root_directory": "/",
+  "build_command": "npm ci && npm test && npx tsc --noEmit",
+  "deploy_command": "npx wrangler deploy"
+}

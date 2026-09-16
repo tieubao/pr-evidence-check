@@ -26,6 +26,19 @@ Any failure: the check fails, the PR is converted to draft (unless
 `convert_to_draft: false`), and a comment lists what to fix. The check never
 marks a PR ready again automatically, only the author does that.
 
+## Two ways to run it
+
+| | Where it runs | Install |
+|---|---|---|
+| Reusable workflow | a GitHub Actions job on your runner | `.github/workflows/evidence-check.yml`, see **Caller usage** below |
+| `pr-evidence` Worker | a Cloudflare Worker on a `pull_request` webhook | `worker/README.md` |
+
+The Worker needs no runner and no Actions minutes; its verdict lands as a
+commit status (context `pr-evidence`) instead of a job result. Both paths call
+the same rules: `scripts/check-body.sh` and its TypeScript port in
+`worker/src/check.ts`, held together by `worker/test/parity.test.ts`, which
+runs both over every fixture and fails if they disagree.
+
 ## Caller usage
 
 ```yaml
