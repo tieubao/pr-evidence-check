@@ -77,20 +77,28 @@ GraphQL mutation returns:
 {"errors":[{"type":"FORBIDDEN","message":"Resource not accessible by integration"}]}
 ```
 
-GitHub does not allow a job token or App token to draft-convert a PR;
-only a user token works. To get real draft conversion, create a
-fine-grained personal access token and pass it through as the
-`draft_token` secret:
+A fine-grained PAT is refused too, with its own wording:
 
-1. GitHub -> Settings -> Developer settings -> Fine-grained tokens -> new
+```json
+{"errors":[{"type":"FORBIDDEN","message":"Resource not accessible by personal access token"}]}
+```
+
+Measured 2026-09-17 against a freshly minted token with Pull requests read
+and write on that one repository. Only a **classic** PAT can run this
+mutation. To get real draft conversion:
+
+1. GitHub -> Settings -> Developer settings -> Tokens (classic) -> new
    token.
-2. Repository access: only the repos that call this workflow (never "all
-   repos").
-3. Permissions: **Pull requests: Read and write**. Nothing else, this
-   token does no other API call in this workflow.
-4. Store it as a repo or org secret (e.g. `PR_EVIDENCE_DRAFT_TOKEN`) and
+2. Scope: `repo`. A classic token cannot be narrowed to one repository,
+   which is the cost of this feature; decide whether draft conversion is
+   worth it before minting one.
+3. Store it as a repo or org secret (e.g. `PR_EVIDENCE_DRAFT_TOKEN`) and
    pass it via `secrets: { draft_token: ... }` in the caller, as shown
    above.
+
+On a paid plan, requiring this check as a status in a branch ruleset beats
+draft conversion and needs no token at all. Rulesets are unavailable on
+Free private repos, which is why draft conversion exists here.
 
 Without this secret, the workflow still runs and still fails the check on
 a bad PR body: it just cannot flip the PR to draft. The comment says

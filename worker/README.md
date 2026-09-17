@@ -69,7 +69,7 @@ public repo, so a var set out of band would not survive.
 | Secret | What |
 |---|---|
 | `GITHUB_WEBHOOK_SECRET` | The webhook's shared secret. Generate with `openssl rand -hex 32`, store it, then set it on both sides. |
-| `GITHUB_TOKEN` | A fine-grained user PAT. Needs, on each configured repo: Pull requests read+write (comment, draft-convert), Commit statuses read+write, Contents read (template + compare). Draft conversion needs a *user* token; an Actions job token or App token gets `FORBIDDEN "Resource not accessible by integration"`. |
+| `GITHUB_TOKEN` | A user PAT. Needs, on each configured repo: Pull requests read+write (comment), Commit statuses read+write (the verdict), Contents read (template and compare). A fine-grained PAT covers all three. Draft conversion is the exception, see below. |
 | `REPOS` | The per-installation table, JSON. |
 
 `REPOS` shape, one entry per repo:
@@ -85,6 +85,24 @@ public repo, so a var set out of band would not survive.
   }
 }
 ```
+
+### Draft conversion needs a CLASSIC PAT
+
+`convertPullRequestToDraft` refuses every non-classic credential:
+
+| Credential | What GitHub answers |
+|---|---|
+| Actions job token, GitHub App install token | `FORBIDDEN "Resource not accessible by integration"` |
+| Fine-grained PAT, even with Pull requests read+write on that one repo | `FORBIDDEN "Resource not accessible by personal access token"` |
+| Classic PAT | works |
+
+Measured 2026-09-17 against a freshly minted single-repo fine-grained token. So
+`convert_to_draft` only does anything when `GITHUB_TOKEN` is a classic PAT.
+With any other token the Worker still runs, still goes red, and appends the
+refusal to its comment; the check is advisory and a reviewer has to hold the
+merge. On a paid plan, requiring the `pr-evidence` status in a ruleset is the
+better gate anyway; rulesets are unavailable on Free private repos, which is
+what made draft conversion the fallback in the first place.
 
 Only `ui_paths` is required, and an entry without it is dropped with a log
 line rather than defaulted: an empty `ui_paths` would waive EVIDENCE on every
