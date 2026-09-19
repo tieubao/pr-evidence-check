@@ -24,11 +24,15 @@ the Worker is deployed once by hand, then handed to Builds.
 npm ci
 CLOUDFLARE_ACCOUNT_ID="$(op read op://Toolkit/cf-account-id/credential)" \
   npx wrangler deploy                     # creates the script
-bash deploy/workers-builds/apply.sh       # dry run, prints the plan
-bash deploy/workers-builds/apply.sh --apply
+OPS_TOOLKIT_ROOT=<ops-toolkit checkout> bash deploy/workers-builds/apply.sh       # dry run, prints the plan
+OPS_TOOLKIT_ROOT=<ops-toolkit checkout> bash deploy/workers-builds/apply.sh --apply
+
+# or point WORKERS_BUILDS_APPLY straight at the canonical apply.sh
 ```
 
-`apply.sh` reads the account id and both Cloudflare tokens from 1Password at
+`apply.sh` is a thin shim that delegates to the canonical implementation
+(`tools/workers-builds/apply.sh` in the operator's ops-toolkit). It reads the
+account id and both Cloudflare tokens from 1Password at
 run time. Override the references with `OP_ACCOUNT_REF`, `OP_ADMIN_TOKEN_REF`,
 and `OP_DEPLOY_TOKEN_REF` if your vault is laid out differently.
 
