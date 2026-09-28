@@ -1,9 +1,12 @@
 # Deploying the `pr-evidence` Worker
 
-CI and deploy for the Worker run on Cloudflare Workers Builds. A push to `main`
-installs, runs the test suite, typechecks, and deploys. The repo's own GitHub
-Actions CI (`.github/workflows/ci.yml`) still runs on pull requests, because
-this repo is public and hosted minutes are free there.
+CI and deploy for the Worker run on Cloudflare Workers Builds. Deploys are
+manual-only: the production trigger's `path_includes` is pinned to a path no
+commit touches, so a push to `main` starts no build. A deploy is started
+explicitly with `bash deploy/workers-builds/run.sh --branch main --watch`,
+which installs, runs the test suite, typechecks, and deploys. The repo's own
+GitHub Actions CI (`.github/workflows/ci.yml`) still runs on pull requests,
+because this repo is public and hosted minutes are free there.
 
 ## Topology
 
