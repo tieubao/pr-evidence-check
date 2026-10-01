@@ -19,7 +19,7 @@ body actually says what they did.
 | Check | What it means |
 |---|---|
 | UNEDITED | No line from the PR template survives verbatim in the body. Author wrote something. |
-| VERIFIED | The `## How I verified it` section has real content (not template placeholder) and looks like a command or output: a fenced code block, a `$` line, a line starting with a known tool (`pnpm`, `npm`, `bash`, `node`, `go`, `cargo`, `make`, `curl`, `wrangler`), or containing `exit 0` / `passed` / `ok`. |
+| VERIFIED | The `## How I verified it` section has real content (not template placeholder) and looks like a command or output: a fenced or indented (4+ spaces or tab) code block, a `$` line, a line starting with a known tool (`pnpm`, `npm`, `npx`, `node`, `python3`, `uv`, `pytest`, `vitest`, `grep`, `rg`, `jq`, `gh`, `git`, `docker`, `go`, `cargo`, `make`, `curl`, `wrangler` and similar), optionally behind a bullet, a `[x]` checkbox or an opening backtick, or output such as `exit 0`, `passed`, `ok`, `127 pass`, `0 failed`. Plain prose with no command or output shape still fails. |
 | EVIDENCE | Only required when the diff touches `ui_paths`. The body must link an image, video, GitHub attachment, or a preview host (`pages.dev`, `workers.dev` by default). |
 
 Any failure: the check fails, the PR is converted to draft (unless

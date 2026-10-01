@@ -122,6 +122,25 @@ check_result_tpl "f: raw real template + UI touched -> overall fails" \
   "$FX/template-real.md" "$FX/raw-template-real-body.md" "$FX/changed-files-ui.txt" \
   '.overall_pass == false'
 
+# (g) VERIFIED signal shapes: each fixture holds ONE shape that real
+# verification sections use, so a regression in one rule cannot hide behind
+# another. Prose with no command/output shape must keep failing.
+verified_case() {
+  local file="$1" want="$2" label="$3"
+  check_result "g: $label -> VERIFIED $want" \
+    "$FX/$file" "$FX/changed-files-no-ui.txt" \
+    "(.checks[] | select(.name == \"VERIFIED\") | .pass) == $want"
+}
+verified_case verified-indented-block.md    true  "indented code block"
+verified_case verified-new-tool.md          true  "line starting with rg"
+verified_case verified-pass-count.md        true  "output '127 pass, 0 fail'"
+verified_case verified-zero-failed.md       true  "output '0 failed'"
+verified_case verified-checklist-command.md true  "checklist item with backticked command"
+verified_case verified-bullet-command.md    true  "bullet with backticked command"
+verified_case verified-backtick-tool.md     true  "backticked tool at line start"
+verified_case verified-pr199.md             true  "merged PR 199 body (indented block)"
+verified_case verified-prose-only.md        false "prose only, nested bullet is not code"
+
 # --- negative control ---
 # Confirm fixture (b) actually depends on the pages.dev link: strip it on a
 # TEMP COPY (never mutate the tracked fixture -- no restore step needed,

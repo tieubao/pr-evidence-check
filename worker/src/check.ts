@@ -74,6 +74,9 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${out}$`);
 }
 
+const TOOLS =
+  "pnpm|npm|npx|yarn|bun|bunx|deno|bash|sh|node|tsc|go|cargo|make|curl|wrangler|python|python3|uv|uvx|pip|pytest|vitest|jest|ruff|eslint|grep|rg|jq|gh|git|docker|shellcheck|sqlite3|duckdb";
+
 function extractVerifiedSection(text: string): string {
   const lines = text.split("\n");
   const out: string[] = [];
@@ -127,11 +130,17 @@ export function check(input: CheckInput): CheckResult {
       .map(trim)
       .filter(Boolean)
       .some((v) => !templateSectionLines.has(v));
+    // Heuristic, kept identical to scripts/check-body.sh (parity.test.ts diffs them).
+    const sectionLines = section.split("\n");
+    const listMarker = /^([-*+]|[0-9]+[.)])([ \t]|$)/;
     const hasSignal =
       /^[ \t]*```/m.test(section) ||
-      /^[ \t]*\$/m.test(section) ||
-      /^[ \t]*(pnpm|npm|bash|node|go|cargo|make|curl|wrangler)\b/m.test(section) ||
-      /(exit 0|passed|\bok\b)/i.test(section);
+      // indented (4+ spaces or tab) code block; a nested list item does not count
+      sectionLines.some((l) => /^( {4}|\t)[ \t]*\S/.test(l) && !listMarker.test(l.trimStart())) ||
+      // `$ cmd` or a known tool at line start, behind an optional bullet, checkbox, backtick
+      new RegExp(`^[ \\t]*(([-*+]|[0-9]+[.)])[ \\t]+)?(\\[[ xX]\\][ \\t]+)?\`?(\\$|(${TOOLS})\\b)`, "m").test(section) ||
+      // output: "exit 0", "passed", "ok", "127 pass", "0 failed"
+      /(exit 0|passed|\bok\b|[0-9]+[ \t]+(tests?[ \t]+)?(pass|fail)(ed|es|s|ing)?\b)/i.test(section);
 
     if (hasContent && hasSignal) {
       verifiedPass = true;
@@ -142,7 +151,7 @@ export function check(input: CheckInput): CheckResult {
     } else {
       verifiedPass = false;
       verifiedReason =
-        "'## How I verified it' has content but no command/output signal (fenced code block, a $ line, or a known tool name)";
+        "'## How I verified it' has content but no command/output signal (fenced or indented code block, a $ line, a known tool name, or output like 127 passed)";
     }
   }
 

@@ -145,11 +145,23 @@ else
     fi
   done <<< "$verified_section"
 
+  # Heuristic, kept identical to worker/src/check.ts (parity.test.ts diffs them).
+  # A line is a signal when, after an optional bullet/number and checkbox and
+  # an optional opening backtick, it starts with `$` or a known tool name.
+  # ponytail: a prose line that starts with a tool word ("go to the page")
+  # still passes; tighten only if that shows up in real PRs.
+  tools='pnpm|npm|npx|yarn|bun|bunx|deno|bash|sh|node|tsc|go|cargo|make|curl|wrangler|python|python3|uv|uvx|pip|pytest|vitest|jest|ruff|eslint|grep|rg|jq|gh|git|docker|shellcheck|sqlite3|duckdb'
+  tab=$'\t'
   has_signal=false
+  # fenced block
   if grep -qE '^[[:space:]]*```' <<< "$verified_section"; then has_signal=true; fi
-  if grep -qE '^[[:space:]]*\$' <<< "$verified_section"; then has_signal=true; fi
-  if grep -qE '^[[:space:]]*(pnpm|npm|bash|node|go|cargo|make|curl|wrangler)\b' <<< "$verified_section"; then has_signal=true; fi
-  if grep -qiE '(exit 0|passed|\bok\b)' <<< "$verified_section"; then has_signal=true; fi
+  # indented (4+ spaces or tab) code block; a nested list item does not count
+  indented="$(grep -E "^(    |$tab)[[:space:]]*[^[:space:]]" <<< "$verified_section" || true)"
+  if [ -n "$indented" ] && grep -qvE "^(    |$tab)[[:space:]]*([-*+]|[0-9]+[.)])([[:space:]]|\$)" <<< "$indented"; then has_signal=true; fi
+  # `$ cmd` or a known tool at line start, behind an optional bullet, checkbox, backtick
+  if grep -qE "^[[:space:]]*(([-*+]|[0-9]+[.)])[[:space:]]+)?(\[[ xX]\][[:space:]]+)?\`?(\\$|($tools)\\b)" <<< "$verified_section"; then has_signal=true; fi
+  # output: "exit 0", "passed", "ok", "127 pass", "0 failed"
+  if grep -qiE '(exit 0|passed|\bok\b|[0-9]+[[:space:]]+(tests?[[:space:]]+)?(pass|fail)(ed|es|s|ing)?\b)' <<< "$verified_section"; then has_signal=true; fi
 
   if [ "$has_content" = true ] && [ "$has_signal" = true ]; then
     verified_pass=true
@@ -159,7 +171,7 @@ else
     verified_reason="'## How I verified it' is empty or only contains placeholder text"
   else
     verified_pass=false
-    verified_reason="'## How I verified it' has content but no command/output signal (fenced code block, a \$ line, or a known tool name)"
+    verified_reason="'## How I verified it' has content but no command/output signal (fenced or indented code block, a \$ line, a known tool name, or output like 127 passed)"
   fi
 fi
 
