@@ -5,7 +5,7 @@ export const COMMENT_MARKER = "### PR evidence check";
 const FIXES: Record<string, string> = {
   UNEDITED: "- Replace the leftover template placeholder text noted above with real content.",
   VERIFIED:
-    '- Fill in "## How I verified it" with what you actually ran and what it showed: a command, a fenced or indented code block, or output like "tests passed".',
+    '- Fill in "## How I verified it" with what you actually ran and what it showed: a command, a fenced code block, or output like "tests passed".',
   EVIDENCE:
     "- Add a screenshot, video, GitHub attachment, or preview link (pages.dev / workers.dev) showing the UI change.",
 };
