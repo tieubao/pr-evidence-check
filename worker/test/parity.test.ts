@@ -25,6 +25,15 @@ for (const template of ["template.md", "template-real.md"]) {
     "filled-with-evidence.md",
     "filled-no-evidence.md",
     "filled-keeps-comments.md",
+    "verified-indented-block.md",
+    "verified-new-tool.md",
+    "verified-pass-count.md",
+    "verified-zero-failed.md",
+    "verified-checklist-command.md",
+    "verified-bullet-command.md",
+    "verified-backtick-tool.md",
+    "verified-prose-only.md",
+    "verified-pr199.md",
   ]) {
     for (const changed of ["changed-files-ui.txt", "changed-files-no-ui.txt"]) {
       cases.push([template, body, changed]);

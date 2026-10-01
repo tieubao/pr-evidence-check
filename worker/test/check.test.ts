@@ -77,6 +77,24 @@ describe("parity with tests/run.sh", () => {
   });
 });
 
+describe("VERIFIED signal shapes", () => {
+  // One fixture per shape, mirroring tests/run.sh (g). Prose stays rejected.
+  const cases: Array<[string, boolean]> = [
+    ["verified-indented-block.md", true],
+    ["verified-new-tool.md", true],
+    ["verified-pass-count.md", true],
+    ["verified-zero-failed.md", true],
+    ["verified-checklist-command.md", true],
+    ["verified-bullet-command.md", true],
+    ["verified-backtick-tool.md", true],
+    ["verified-pr199.md", true],
+    ["verified-prose-only.md", false],
+  ];
+  it.each(cases)("%s -> VERIFIED %s", (file, want) => {
+    expect(verdict(run(file, CHANGED_NO_UI), "VERIFIED").pass).toBe(want);
+  });
+});
+
 describe("negative control", () => {
   it("EVIDENCE fails once the preview link is dropped from fixture b", () => {
     const body = read("filled-with-evidence.md")
