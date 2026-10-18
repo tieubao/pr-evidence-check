@@ -26,6 +26,12 @@ Any failure: the check fails, the PR is converted to draft (unless
 `convert_to_draft: false`), and a comment lists what to fix. The check never
 marks a PR ready again automatically, only the author does that.
 
+A draft PR is the exception: the comment still lists what to fix, but the
+job exits green, since a draft cannot merge. Marking it ready re-runs the
+check. Open as draft when the evidence (a preview link) only exists after
+the PR does, then add it and mark the PR ready. This applies to the
+reusable workflow.
+
 ## Two ways to run it
 
 | | Where it runs | Install |

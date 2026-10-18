@@ -207,4 +207,13 @@ jobs:
             curl -sSf -X POST -H "Authorization: Bearer ${GH_TOKEN}" "$api" -d "$payload" >/dev/null
           fi
 
+          # A draft has no merge button, so a failing body there is "not
+          # yet", not a failure: the comment still lists what to fix, and
+          # `ready_for_review` re-runs the check and goes red if it is still
+          # missing. This lets an author open as draft while a preview deploy
+          # is still building, without a red run and its failure email.
+          if [ "$overall_pass" != "true" ] && [ "$IS_DRAFT" = "true" ]; then
+            echo "::notice::Evidence check not met, PR is a draft: re-checked when marked ready."
+            exit 0
+          fi
           [ "$overall_pass" = "true" ]
