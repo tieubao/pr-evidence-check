@@ -7,6 +7,7 @@
   "name": "pr-evidence",
   "main": "worker/src/index.ts",
   "compatibility_date": "2026-07-01",
+  "preview_urls": false,
   "observability": { "enabled": true, "head_sampling_rate": 1 }
   // No account id: this repo is public. `wrangler deploy` reads it from
   // CLOUDFLARE_ACCOUNT_ID.
