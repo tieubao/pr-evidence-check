@@ -1,0 +1,10 @@
+consumer     = "pr-evidence-check"
+registered   = 2026-09-19
+toolkit_path = "~/workspace/tieubao/ops-toolkit"
+
+# Tools from ops-toolkit this repo actively uses.
+# - workers-builds: deploy/workers-builds/apply.sh delegates to the tool's apply.sh.
+uses         = ["workers-builds"]
+
+# Tools that originated in this repo and were extracted to ops-toolkit.
+contributed  = []
