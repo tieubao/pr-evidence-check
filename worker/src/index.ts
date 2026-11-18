@@ -1,7 +1,7 @@
 import { check } from "./check";
 import { renderBypassComment, renderComment } from "./comment";
 import { parseRepos, type RepoConfig } from "./config";
-import { convertToDraft, fetchChangedFiles, fetchTemplate, setStatus, upsertComment } from "./github";
+import { convertToDraft, fetchChangedFiles, fetchTemplate, GithubError, setStatus, upsertComment } from "./github";
 
 export interface Env {
   GITHUB_WEBHOOK_SECRET: string; // wrangler secret, HMAC key for X-Hub-Signature-256
@@ -122,8 +122,33 @@ async function handleWebhook(request: Request, env: Env, ctx: ExecutionContext):
     return new Response("service unavailable", { status: 503 });
   }
 
-  ctx.waitUntil(judge(env, repo, config, payload));
+  ctx.waitUntil(judgeOrReportError(env, repo, config, payload));
   return new Response(null, { status: 202 });
+}
+
+// The 202 is already sent, so GitHub will not redeliver: a throw out of judge()
+// would leave a required `pr-evidence` check pending forever. Turn any failure
+// into a terminal `error` status, best effort, and log it. The description
+// carries only the HTTP status, never a path, token, or response body.
+export async function judgeOrReportError(
+  env: Env,
+  repo: string,
+  config: RepoConfig,
+  payload: PullRequestEvent,
+): Promise<void> {
+  try {
+    await judge(env, repo, config, payload);
+  } catch (err) {
+    const reason = err instanceof GithubError ? `GitHub API ${err.status || "rejected"}` : "internal error";
+    console.error(`[judge] failed repo=${repo} pr=${payload.pull_request?.number ?? "?"} reason=${reason}`);
+    const headSha = payload.pull_request?.head?.sha;
+    if (!headSha) return;
+    try {
+      await setStatus(env.GITHUB_TOKEN, repo, headSha, "error", `check could not run: ${reason}`);
+    } catch {
+      console.error(`[judge] error status not set repo=${repo}`);
+    }
+  }
 }
 
 export async function judge(

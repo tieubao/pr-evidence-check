@@ -97,7 +97,7 @@ export async function setStatus(
   token: string,
   repo: string,
   sha: string,
-  state: "success" | "failure",
+  state: "success" | "failure" | "error",
   description: string,
   targetUrl?: string,
 ): Promise<void> {
