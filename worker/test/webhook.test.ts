@@ -223,6 +223,34 @@ describe("verdict", () => {
   });
 });
 
+describe("GitHub failure while judging", () => {
+  // The webhook already answered 202, so GitHub never redelivers. Without a
+  // terminal status a required `pr-evidence` check sits pending forever.
+  const failGithubReads = () => {
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ method: init?.method ?? "GET", url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      if (url.includes("/compare/") || url.includes("/contents/")) return new Response("boom", { status: 502 });
+      return Response.json({});
+    });
+  };
+
+  it("sets an error status when a GitHub read fails, and does not reject waitUntil", async () => {
+    failGithubReads();
+    expect((await post(event())).status).toBe(202);
+    expect(statusCall()!.body).toMatchObject({ state: "error", context: "pr-evidence" });
+    expect(String((statusCall()!.body as { description: string }).description)).toContain("502");
+  });
+
+  it("survives the error status call failing too", async () => {
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ method: init?.method ?? "GET", url: String(input), body: undefined });
+      return new Response("down", { status: 503 });
+    });
+    expect((await post(event())).status).toBe(202);
+  });
+});
+
 describe("config", () => {
   it("drops a repo entry with no ui_paths rather than waiving EVIDENCE", () => {
     const parsed = parseRepos(JSON.stringify({ "a/b": { preview_hosts: ["x"] }, "c/d": { ui_paths: ["src/*"] } }));
